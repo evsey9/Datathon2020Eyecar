@@ -47,46 +47,59 @@ j = 0
 
 IPadress = "192.168.1.104"
 
+# Variables for vid capture
+reading_from_file = True
+fps = 5
+time_between_frames = 1000 // fps if reading_from_file else 1
+if reading_from_file:
+    cap = cv2.VideoCapture('Sign.mkv')
+
 # Connection with raspberry to transmit commands
 sock = socket.socket()
 server_address = (IPadress, 1080)
-sock.connect(server_address)
-print("Connection Established")
+if not reading_from_file:
+    sock.connect(server_address)
+    print("Connection Established")
+    # Request a video stream from Eyecar
+    client = beholder.Client(zmq_host=IPadress,
+                             # zmq_host="192.168.1.145",
+                             zmq_port=12345,
+                             rtp_host="192.168.1.208",
+                             # rtp_host="10.205.1.185",
+                             rtp_port=5000,
+                             rtcp_port=5001,
+                             device="/dev/video0",
+                             # width=1920,
+                             # height=1080,
+                             width=1280,
+                             height=720,
+                             # width=640,
+                             # height=480,
+                             framerate=30,
+                             encoding=beholder.Encoding.MJPEG,  #MJPEG,    #H264
+                             limit=20)
 
-# Request a video stream from Eyecar
-client = beholder.Client(zmq_host=IPadress,
-                         # zmq_host="192.168.1.145",
-                         zmq_port=12345,
-                         rtp_host="192.168.1.208",
-                         # rtp_host="10.205.1.185",
-                         rtp_port=5000,
-                         rtcp_port=5001,
-                         device="/dev/video0",
-                         # width=1920,
-                         # height=1080,
-                         width=1280,
-                         height=720,
-                         # width=640,
-                         # height=480,
-                         framerate=30,
-                         encoding=beholder.Encoding.MJPEG,  #MJPEG,    #H264
-                         limit=20)
-
-client.start()
+    client.start()
 
 #
 cv2.namedWindow("Frame")
 
-send_cmd(DEFAULT_CMD)
+if not reading_from_file:
+    send_cmd(DEFAULT_CMD)
 time.sleep(2)
 flag = 1
 key = 1
 fn = 1
 speed = 1548
 
+
+
 while cv2.waitKey(10) != ESCAPE:
-    status, frame = client.get_frame(0.25)  # read the sent frame
-    if status == beholder.Status.OK:
+    if reading_from_file:
+        ret, frame = cap.read()
+    else:
+        status, frame = client.get_frame(0.25)  # read the sent frame
+    if reading_from_file or status == beholder.Status.OK:
         cv2.imshow("Frame", frame)
 
         # detection road
@@ -109,9 +122,10 @@ while cv2.waitKey(10) != ESCAPE:
         last = err
 
         # send speed and angle to Eyecar
-        send_cmd('H00/' + str(speed) + '/' + str(angle)+"E")
+        if not reading_from_file:
+            send_cmd('H00/' + str(speed) + '/' + str(angle)+"E")
 
-        key = cv2.waitKey(1)
+        key = cv2.waitKey(time_between_frames)
 
     elif status == beholder.Status.EOS:
         print("End of stream")
@@ -124,7 +138,8 @@ while cv2.waitKey(10) != ESCAPE:
         pass
 
 # Completion of work
-send_cmd(DEFAULT_CMD)  # Stop the car
-sock.close()
 cv2.destroyAllWindows()
-client.stop()
+if not reading_from_file:
+    send_cmd(DEFAULT_CMD)  # Stop the car
+    sock.close()
+    client.stop()
