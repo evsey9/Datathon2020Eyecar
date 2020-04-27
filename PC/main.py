@@ -106,7 +106,7 @@ while cv2.waitKey(10) != ESCAPE:
         status, frame = client.get_frame(0.25)  # read the sent frame
     if reading_from_file or status == beholder.Status.OK:
         cv2.imshow("Frame", frame)
-        stop = False
+        # stop = False
         # detection road
         img = cv2.resize(frame, (400, 300))
         binary = binarize(img, d=1)
@@ -118,8 +118,9 @@ while cv2.waitKey(10) != ESCAPE:
         if cut_sum >= stop_thres:
             print("Stopping...")
             stop_first = True
-        elif stop_first and cut_sum < stop_thres_bottom:
             stop = True
+        elif stop_first and cut_sum < stop_thres_bottom:
+            print("stop ended")
             stop_first = False
             # cv2.waitKey(0)
 
