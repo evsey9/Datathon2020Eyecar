@@ -49,10 +49,10 @@ IPadress = "192.168.1.104"
 
 # Variables for vid capture
 reading_from_file = True
-fps = 5
+fps = 20
 time_between_frames = 1000 // fps if reading_from_file else 1
 if reading_from_file:
-    cap = cv2.VideoCapture('Sign.mkv')
+    cap = cv2.VideoCapture('Sign3.mkv')
 
 # Connection with raspberry to transmit commands
 sock = socket.socket()
@@ -92,7 +92,17 @@ key = 1
 fn = 1
 speed = 1548
 
-
+# stuff
+stop = False
+stopfirst = False
+red1_min = np.array((0, 70, 70), np.uint8)
+red1_max = np.array((25, 255, 255), np.uint8)
+red2_min = np.array((210, 70, 70), np.uint8)
+red2_max = np.array((255, 255, 255), np.uint8)
+green_min = np.array((60, 70, 70), np.uint8)
+green_max = np.array((100, 255, 255), np.uint8)
+stop_casc_path = "stopsign_classifier.xml"
+stop_cascade = cv2.CascadeClassifier(stop_casc_path)
 
 while cv2.waitKey(10) != ESCAPE:
     if reading_from_file:
@@ -109,6 +119,27 @@ while cv2.waitKey(10) != ESCAPE:
         left, right = centre_mass(perspective, d=1)
         err = 0 - ((left + right) // 2 - 200)
 
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        stop_signs = stop_cascade.detectMultiScale(
+            gray,
+            scaleFactor=1.3,
+            minNeighbors=3,
+            #minSize=(30, 30),
+            #flags=cv2.CASCADE_SCALE_IMAGE
+        )
+        stopflag = False
+        for (x, y, w, h) in stop_signs:
+            print("stop")
+            cv2.rectangle(gray, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            stopflag = True
+            stopfirst = True
+            stop = True
+            cv2.waitKey(0)
+
+        if stopfirst and not stopflag:
+            print("passed stop")
+
+        cv2.imshow("win", gray)
         if abs(right - left) < 100:
             err = last
             print("LAST")
@@ -123,7 +154,7 @@ while cv2.waitKey(10) != ESCAPE:
 
         # send speed and angle to Eyecar
         if not reading_from_file:
-            send_cmd('H00/' + str(speed) + '/' + str(angle)+"E")
+            send_cmd('H00/' + str(speed * int(not stop)) + '/' + str(angle)+"E")
 
         key = cv2.waitKey(time_between_frames)
 
