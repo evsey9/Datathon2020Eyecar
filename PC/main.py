@@ -48,11 +48,11 @@ j = 0
 IPadress = "192.168.1.104"
 
 # Variables for vid capture
-reading_from_file = True
+reading_from_file = False
 fps = 5
 time_between_frames = 1000 // fps if reading_from_file else 1
 if reading_from_file:
-    cap = cv2.VideoCapture('Sign.mkv')
+    cap = cv2.VideoCapture('Sign2.mkv')
 
 # Connection with raspberry to transmit commands
 sock = socket.socket()
@@ -92,8 +92,13 @@ key = 1
 fn = 1
 speed = 1548
 
+# recognition constants
+stop_thres = 3500000
+stop_thres_bottom = 500000
 
-
+# recognition variables
+stop_first = False
+stop = False
 while cv2.waitKey(10) != ESCAPE:
     if reading_from_file:
         ret, frame = cap.read()
@@ -101,14 +106,25 @@ while cv2.waitKey(10) != ESCAPE:
         status, frame = client.get_frame(0.25)  # read the sent frame
     if reading_from_file or status == beholder.Status.OK:
         cv2.imshow("Frame", frame)
-
+        stop = False
         # detection road
         img = cv2.resize(frame, (400, 300))
         binary = binarize(img, d=1)
         perspective = trans_perspective(binary, TRAP, RECT, SIZE)
+        cut_perspective = perspective[125:300, 80:280]
+        cv2.imshow("cut", cut_perspective)
+        cut_sum = np.sum(cut_perspective)
+
+        if cut_sum >= stop_thres:
+            print("Stopping...")
+            stop_first = True
+        elif stop_first and cut_sum < stop_thres_bottom:
+            stop = True
+            stop_first = False
+            # cv2.waitKey(0)
+
         left, right = centre_mass(perspective, d=1)
         err = 0 - ((left + right) // 2 - 200)
-
         if abs(right - left) < 100:
             err = last
             print("LAST")
@@ -123,7 +139,7 @@ while cv2.waitKey(10) != ESCAPE:
 
         # send speed and angle to Eyecar
         if not reading_from_file:
-            send_cmd('H00/' + str(speed) + '/' + str(angle)+"E")
+            send_cmd('H00/' + str(speed * int(not stop)) + '/' + str(angle)+"E")
 
         key = cv2.waitKey(time_between_frames)
 
