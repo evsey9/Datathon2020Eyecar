@@ -1,0 +1,26 @@
+<annotation>
+	<folder>images</folder>
+	<filename>28.jpg</filename>
+	<path>C:\Users\Evsey\PycharmProjects\Datathon2020Eyecar\PC\trafficlight_trainer\images\28.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>1678</width>
+		<height>944</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>trafficlight</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>972</xmin>
+			<ymin>39</ymin>
+			<xmax>1107</xmax>
+			<ymax>221</ymax>
+		</bndbox>
+	</object>
+</annotation>

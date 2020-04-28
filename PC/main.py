@@ -5,6 +5,8 @@ import beholder
 import numpy as np
 import socket
 import time
+import dlib
+import time
 
 from func import *
 
@@ -48,11 +50,11 @@ j = 0
 IPadress = "192.168.1.104"
 
 # Variables for vid capture
-reading_from_file = False
+reading_from_file = True  # Change this to capture from videofile instead of robot feed, for testing!
 fps = 20
 time_between_frames = 1000 // fps if reading_from_file else 1
 if reading_from_file:
-    cap = cv2.VideoCapture('trafficlight.mkv')
+    cap = cv2.VideoCapture('Sign2.mkv')  # Change the string to choose which videofile to capture from
 
 # Connection with raspberry to transmit commands
 sock = socket.socket()
@@ -90,20 +92,34 @@ time.sleep(2)
 flag = 1
 key = 1
 fn = 1
-speed = 1500
+speed = 1550
 
-# stuff
+# constants
+trafficlight_detector = dlib.simple_object_detector("trafficlight_detector.svm")
 h_min = np.array((0, 0, 215), np.uint8)
 h_max = np.array((360, 255, 255), np.uint8)
+base_shape = (720, 1280, 3)
+base_traffic_shape = (85, 64, 3)
+max_time_between_detection = 0.5  # in seconds
+min_x = 90  # 90
+
+# variables
+static = True
+stop = False
+seeing_trafficlight = False
+last_time_seen = 0
+bound_top = -1
+bound_bottom = -1
+bound_left = -1
+bound_right = -1
 text = "ничего не горит"
 color = (0, 0, 0)
 prev_color = ""
 blink_lock = False
-base_shape = (720, 1280, 3)
 
 # color pixel thresholds
 red_thresh = 45000
-yellow_thresh = 100000
+yellow_thresh = 45000
 green_thresh = 25000
 
 pixel_thresholds = [red_thresh, yellow_thresh, green_thresh]
@@ -115,85 +131,97 @@ while cv2.waitKey(10) != ESCAPE:
     else:
         status, frame = client.get_frame(0.25)  # read the sent frame
     if reading_from_file or status == beholder.Status.OK:
-
         # detection road
         if frame.shape != base_shape:
             frame = cv2.resize(frame, (base_shape[1], base_shape[0]))
-
+        copy = frame.copy()
         img = cv2.resize(frame, (400, 300))
         binary = binarize(img, d=1)
         perspective = trans_perspective(binary, TRAP, RECT, SIZE)
         left, right = centre_mass(perspective, d=1)
         err = 0 - ((left + right) // 2 - 200)
 
-        bound_prop_y = 0
-        bound_prop_x = 0.58  # 0.5625
-        bound_prop_height = 0.110  # 0.125
-        bound_prop_width = 0.065  # 0.1
-        bound_y_min = int(frame.shape[0] * bound_prop_y)
-        bound_y_max = int(frame.shape[0] * (bound_prop_y + bound_prop_height))
-        bound_x_min = int(frame.shape[1] * bound_prop_x)
-        bound_x_max = int(frame.shape[1] * (bound_prop_x + bound_prop_width))
+        boxes = trafficlight_detector(copy)
+        for box in boxes:
+            (x, y, xb, yb) = [box.left(), box.top(), box.right(), box.bottom()]
+            (bound_left, bound_top, bound_right, bound_bottom) = (max(x, 0), max(y, 0), max(0, xb), max(0, yb))
+            print("found: ", x, y, xb, yb)
+            cv2.rectangle(copy, (x, y), (xb, yb), (0, 0, 255), 2)
+            width = bound_right - bound_left
+            if width >= min_x * int(not static):  # If we are static, then we do not care about min X of the trafficlight (or, the distance to it)
+                seeing_trafficlight = True
+                last_time_seen = time.time()
+        if len(boxes) == 0:
+            if time.time() - last_time_seen > max_time_between_detection:  # Detecting if we completely lost the traffic light by the time between detection. Need a better way.
+                seeing_trafficlight = False
+        if seeing_trafficlight:
+            traffic_cut_1 = frame[bound_top:bound_bottom, bound_left:bound_right]
+            actual_shape = traffic_cut_1.shape
+            traffic_cut_1 = cv2.resize(traffic_cut_1, (base_traffic_shape[1], base_traffic_shape[0]))
+            hsv_traffic_cut = cv2.cvtColor(traffic_cut_1, cv2.COLOR_BGR2HSV_FULL)
+            hsv_traffic_cut = cv2.medianBlur(hsv_traffic_cut, 5)
 
-        traffic_cut_1 = frame[bound_y_min:bound_y_max, bound_x_min:bound_x_max]
+            mask_full = cv2.inRange(hsv_traffic_cut, h_min, h_max)
 
-        hsv_traffic_cut = cv2.cvtColor(traffic_cut_1, cv2.COLOR_BGR2HSV_FULL)
-        hsv_traffic_cut = cv2.medianBlur(hsv_traffic_cut, 5)
+            y_cut = mask_full.shape[0] / 3
 
-        mask_full = cv2.inRange(hsv_traffic_cut, h_min, h_max)
+            cut_red = mask_full[0:int(y_cut)]
+            cut_yellow = mask_full[int(y_cut):int(y_cut * 2)]
+            cut_green = mask_full[int(y_cut * 2):-1]
 
-        y_cut = mask_full.shape[0] / 3
+            sum_red = np.sum(cut_red)
+            sum_yellow = np.sum(cut_yellow)
+            sum_green = np.sum(cut_green)
+            pixel_sums = [sum_red, sum_yellow, sum_green]
 
-        cut_red = mask_full[0:int(y_cut)]
-        cut_yellow = mask_full[int(y_cut):int(y_cut * 2)]
-        cut_green = mask_full[int(y_cut * 2):-1]
+            print("red: ", sum_red)
+            print("yellow: ", sum_yellow)
+            print("green: ", sum_green)
 
-        sum_red = np.sum(cut_red)
-        sum_yellow = np.sum(cut_yellow)
-        sum_green = np.sum(cut_green)
-        pixel_sums = [sum_red, sum_yellow, sum_green]
+            red_state = sum_red >= red_thresh
+            yellow_state = sum_yellow >= yellow_thresh
+            green_state = sum_green >= green_thresh
+            trafficlight_state = [red_state, yellow_state, green_state]
+            print("state: ", trafficlight_state)
 
-        print("red: ", sum_red)
-        print("yellow: ", sum_yellow)
-        print("green: ", sum_green)
 
-        red_state = sum_red >= red_thresh
-        yellow_state = sum_yellow >= yellow_thresh
-        green_state = sum_green >= green_thresh
-        trafficlight_state = [red_state, yellow_state, green_state]
-        print("state: ", trafficlight_state)
+            text_pos = (bound_left, bound_bottom + 20)
 
-        copy = frame.copy()
-        text_pos = (int(copy.shape[1] * bound_prop_x), int(copy.shape[0] * (bound_prop_y + bound_prop_height) + 10))
+            if red_state and yellow_state:
+                stop = True
+                prev_color = "redyellow"
+                text = "красный+желтый"
+                color = (0, 0, 255)
+            elif red_state:
+                stop = True
+                prev_color = "red"
+                text = "красный"
+                color = (0, 0, 255)
+            elif yellow_state:
+                stop = True
+                prev_color = "yellow"
+                text = "желтый"
+                color = (0, 255, 255)
+            elif green_state and not blink_lock:
+                stop = False
+                prev_color = "green"
+                text = "зеленый"
+                color = (0, 255, 0)
+            elif prev_color == "green":
+                stop = False
+                blink_lock = True
+                text = "мигающий зеленый"
+                color = (0, 255, 0)
+            else:
+                stop = False
+                blink_lock = False
 
-        if red_state and yellow_state:
-            prev_color = "redyellow"
-            text = "красный+желтый"
-            color = (0, 0, 255)
-        elif red_state:
-            prev_color = "red"
-            text = "красный"
-            color = (0, 0, 255)
-        elif yellow_state:
-            prev_color = "yellow"
-            text = "желтый"
-            color = (0, 255, 255)
-        elif green_state and not blink_lock:
-            prev_color = "green"
-            text = "зеленый"
-            color = (0, 255, 0)
-        elif prev_color == "green":
-            blink_lock = True
-            text = "мигающий зеленый"
-            color = (0, 255, 0)
-        else:
-            blink_lock = False
-
-        copy = cv2.putText(copy, text, text_pos, cv2.FONT_HERSHEY_COMPLEX, 1, color)
+            print("act shape: ", actual_shape)
+            copy = cv2.putText(copy, text, text_pos, cv2.FONT_HERSHEY_COMPLEX, 1, color)
+            cv2.imshow("trafcut1", traffic_cut_1)
+            cv2.imshow("full_mask", mask_full)
 
         cv2.imshow("Frame", copy)
-        cv2.imshow("trafcut1", traffic_cut_1)
-        cv2.imshow("full_mask", mask_full)
 
         if abs(right - left) < 100:
             err = last
@@ -206,10 +234,11 @@ while cv2.waitKey(10) != ESCAPE:
             angle = 104
 
         last = err
-
+        if stop:
+            print("stopped")
         # send speed and angle to Eyecar
         if not reading_from_file:
-            send_cmd('H00/' + str(speed) + '/' + str(angle)+"E")
+            send_cmd('H00/' + str(speed * int(not (static or stop))) + '/' + str(angle)+"E")
 
         key = cv2.waitKey(time_between_frames)
 
