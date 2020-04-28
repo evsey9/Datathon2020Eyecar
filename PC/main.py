@@ -95,6 +95,10 @@ speed = 1500
 # stuff
 h_min = np.array((0, 0, 215), np.uint8)
 h_max = np.array((360, 255, 255), np.uint8)
+text = "ничего не горит"
+color = (0, 0, 0)
+prev_color = ""
+blink_lock = False
 
 # color pixel thresholds
 red_thresh = 45000
@@ -158,23 +162,35 @@ while cv2.waitKey(10) != ESCAPE:
 
         copy = frame.copy()
         text_pos = (int(copy.shape[1] * bound_prop_x), int(copy.shape[0] * (bound_prop_y + bound_prop_height) + 10))
-        text = "ничего не горит"
-        color = (0, 0, 0)
+
         if red_state and yellow_state:
+            prev_color = "redyellow"
             text = "красный+желтый"
             color = (0, 0, 255)
         elif red_state:
+            prev_color = "red"
             text = "красный"
             color = (0, 0, 255)
         elif yellow_state:
+            prev_color = "yellow"
             text = "желтый"
             color = (0, 255, 255)
-        elif green_state:
+        elif green_state and not blink_lock:
+            prev_color = "green"
             text = "зеленый"
             color = (0, 255, 0)
+        elif prev_color == "green":
+            blink_lock = True
+            text = "мигающий зеленый"
+            color = (0, 255, 0)
+        else:
+            blink_lock = False
+
         copy = cv2.putText(copy, text, text_pos, cv2.FONT_HERSHEY_COMPLEX, 1, color)
 
         cv2.imshow("Frame", copy)
+        # cv2.imshow("trafcut1", traffic_cut_1)
+        # cv2.imshow("full_mask", mask_full)
 
         if abs(right - left) < 100:
             err = last
