@@ -123,8 +123,8 @@ while cv2.waitKey(10) != ESCAPE:
         stop_signs = stop_cascade.detectMultiScale(
             gray,
             scaleFactor=1.3,
-            minNeighbors=3,
-            #minSize=(30, 30),
+            minNeighbors=4,
+            minSize=(70, 70),
             #flags=cv2.CASCADE_SCALE_IMAGE
         )
         stopflag = False
@@ -134,7 +134,7 @@ while cv2.waitKey(10) != ESCAPE:
             stopflag = True
             stopfirst = True
             stop = True
-            cv2.waitKey(0)
+            # cv2.waitKey(0)
 
         if stopfirst and not stopflag:
             print("passed stop")
