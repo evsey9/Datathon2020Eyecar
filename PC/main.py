@@ -99,6 +99,7 @@ text = "ничего не горит"
 color = (0, 0, 0)
 prev_color = ""
 blink_lock = False
+base_shape = (720, 1280, 3)
 
 # color pixel thresholds
 red_thresh = 45000
@@ -115,8 +116,10 @@ while cv2.waitKey(10) != ESCAPE:
         status, frame = client.get_frame(0.25)  # read the sent frame
     if reading_from_file or status == beholder.Status.OK:
 
-
         # detection road
+        if frame.shape != base_shape:
+            frame = cv2.resize(frame, (base_shape[1], base_shape[0]))
+
         img = cv2.resize(frame, (400, 300))
         binary = binarize(img, d=1)
         perspective = trans_perspective(binary, TRAP, RECT, SIZE)
