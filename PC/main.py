@@ -48,7 +48,7 @@ j = 0
 IPadress = "192.168.1.104"
 
 # Variables for vid capture
-reading_from_file = True
+reading_from_file = False
 fps = 20
 time_between_frames = 1000 // fps if reading_from_file else 1
 if reading_from_file:
@@ -192,8 +192,8 @@ while cv2.waitKey(10) != ESCAPE:
         copy = cv2.putText(copy, text, text_pos, cv2.FONT_HERSHEY_COMPLEX, 1, color)
 
         cv2.imshow("Frame", copy)
-        # cv2.imshow("trafcut1", traffic_cut_1)
-        # cv2.imshow("full_mask", mask_full)
+        cv2.imshow("trafcut1", traffic_cut_1)
+        cv2.imshow("full_mask", mask_full)
 
         if abs(right - left) < 100:
             err = last
